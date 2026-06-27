@@ -27,12 +27,12 @@ PgSTAC stores all collection and item records as jsonb fields exactly as they co
 |                            --|          --|
 |                          2.5 | >=0.7,<0.8 |
 |                          3.0 | >=0.8,<0.9 |
-|                          4.0 | >=0.8,<0.10 |
+|                        >=4.0 | >=0.8,<0.10|
 
 ## Usage
 
 PgSTAC is an external project and may be used by multiple front ends.
-For Stac FastAPI development, a Docker image (which is pulled as part of the docker-compose) is available via the [Github container registry](https://github.com/stac-utils/pgstac/pkgs/container/pgstac/81689794?tag=latest).
+For STAC FastAPI development, a Docker image (which is pulled as part of the docker-compose) is available via the [Github container registry](https://github.com/stac-utils/pgstac/pkgs/container/pgstac/81689794?tag=latest).
 The PgSTAC version required by **stac-fastapi-pgstac** is found in the [setup](http://github.com/stac-utils/stac-fastapi-pgstac/blob/main/setup.py) file.
 
 ### Sorting
@@ -43,7 +43,34 @@ For more than millions of records it is recommended to either set a low connecti
 
 ### Hydration
 
-To configure **stac-fastapi-pgstac** to [hydrate search result items in the API](https://stac-utils.github.io/pgstac/pgstac/#runtime-configurations), set the `USE_API_HYDRATE` environment variable to `true` or explicitly set the option in the PGStac Settings object.
+To configure **stac-fastapi-pgstac** to [hydrate search result items at the API level](https://stac-utils.github.io/pgstac/pgstac/#runtime-configurations), set the `USE_API_HYDRATE` environment variable to `true`. If `false` (default) the hydration will be done in the database.
+
+| use_api_hydrate (API) | nohydrate (PgSTAC) | Hydration |
+|                  --- |                --- |       --- |
+|                False |              False |    PgSTAC |
+|                 True |               True |       API |
+
+### Multi-Tenant Catalogs Extension
+
+**stac-fastapi-pgstac** supports the optional [Multi-Tenant Catalogs Extension](https://github.com/StacLabs/multi-tenant-catalogs) for managing hierarchical catalog structures with support for Directed Acyclic Graphs (DAG).
+This enables flexible catalog hierarchies where collections and catalogs can have multiple parents.
+
+To enable this extension, install the `stac-fastapi-catalogs-extension` package and set the `ENABLE_CATALOGS_EXTENSION=TRUE` environment variable.
+
+For write operations (creating, updating, and deleting catalogs, and linking/unlinking collections and catalogs), also set `ENABLE_TRANSACTIONS_EXTENSIONS=TRUE`.
+
+#### Poly-Hierarchy Links
+
+When a catalog or collection has multiple parents, the API exposes the catalog hierarchy through STAC link relations:
+
+- `rel="parent"`: Points to the contextual parent (the catalog through which the resource was accessed)
+- `rel="related"`: Links to alternative parents in the poly-hierarchy (for catalogs and scoped collections)
+- `rel="duplicate"`: Links to alternative scoped paths where a collection can be accessed (e.g., `/catalogs/{parentId}/collections/{collectionId}`)
+- `rel="canonical"`: Points to the global collection endpoint for scoped collections
+
+To prevent information leakage about other tenants in multi-tenant deployments, set `HIDE_ALTERNATE_PARENTS=TRUE` to suppress `rel="related"` and `rel="duplicate"` links. When enabled, only the contextual `rel="parent"` link is advertised.
+
+**Note:** The link relation names for poly-hierarchy navigation are subject to change as the OGC and STAC communities continue to standardize on terminology. These names may be updated in future releases to align with emerging standards.
 
 ### Migrations
 
@@ -54,39 +81,83 @@ To use:
 pypgstac migrate
 ```
 
-## Contributing
+## Development
 
-See [CONTRIBUTING](https://github.com/stac-utils/stac-fastapi-pgstac/blob/main/CONTRIBUTING.md) for detailed contribution instructions.
+### Quick Start
 
-To install:
+Install the packages in editable mode:
+
+We recommend using [`uv`](https://docs.astral.sh/uv) as project manager for development.
+
+See https://docs.astral.sh/uv/getting-started/installation/ for installation
 
 ```shell
-git clone https://github.com/stac-utils/stac-fastapi-pgstac
-cd stac-fastapi-pgstac
-python -m pip install -e ".[dev,server,docs]"
+uv sync --dev
 ```
 
-To test:
+### Running the API Locally
+
+Start the API with Docker Compose:
+
+```shell
+make docker-run
+```
+
+The API will be available at `http://localhost:8082`
+
+### Running with Nginx Proxy
+
+To run the API behind an Nginx proxy:
+
+```shell
+make docker-run-nginx-proxy
+```
+
+The API will be available at:
+- Direct: `http://localhost:8082`
+- Via Nginx: `http://localhost:8080/api/v1/pgstac/`
+
+### Loading Demo Data
+
+To load the Joplin demo dataset:
+
+```shell
+make load-joplin
+```
+
+### Running Tests
+
+To run tests locally (requires postgres/postgis system packages):
+
+```shell
+uv run pytest
+```
+
+**NOTE:** If running tests directly on your machine doesn't work, you can use Docker Compose instead. You need [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) installed.
+
+To run tests in a container:
 
 ```shell
 make test
 ```
 
-Use Github [Pull Requests](https://github.com/stac-utils/stac-fastapi-pgstac/pulls) to provide new features or to request review of draft code, and use [Issues](https://github.com/stac-utils/stac-fastapi-pgstac/issues) to report bugs or request new features.
+### Stopping Services
 
-### Documentation
-
-To build the docs:
+To stop running services:
 
 ```shell
-make docs
+make docker-down          # Stop the default app
+make docker-down-nginx    # Stop the nginx variant
+make docker-down-all      # Stop all services
 ```
 
-Then, serve the docs via a local HTTP server:
+## Contributing
 
-```shell
-mkdocs serve
-```
+See [CONTRIBUTING](./contributing.md) for detailed contribution instructions.
+
+## Releasing
+
+See [RELEASING.md](./releasing.md).
 
 ## History
 

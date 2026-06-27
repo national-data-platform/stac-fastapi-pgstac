@@ -1,7 +1,6 @@
 services:
   app:
     image: stac-utils/stac-fastapi-pgstac
-    restart: always
     build: .
     environment:
       - APP_HOST=0.0.0.0
@@ -20,21 +19,22 @@ services:
       - DB_MIN_CONN_SIZE=1
       - DB_MAX_CONN_SIZE=1
       - USE_API_HYDRATE=${USE_API_HYDRATE:-false}
-      - ENABLE_TRANSACTIONS_EXTENSIONS=TRUE
-      - STAC_FASTAPI_TITLE=NDP STAC
-      - STAC_FASTAPI_DESCRIPTION=NDP STAC Catalog
+      - ENABLE_TRANSACTIONS_EXTENSIONS=${ENABLE_TRANSACTIONS_EXTENSIONS:-false}
+      - ENABLE_CATALOGS_EXTENSION=${ENABLE_CATALOGS_EXTENSION:-false}
+    ports:
+      - "8082:8082"
     volumes:
-      - .:/app
+      - ./stac_fastapi:/app/stac_fastapi
     depends_on:
       - database
-    command: bash -c "./scripts/wait-for-it.sh database:5432 && uvicorn stac_fastapi.pgstac.app:app --host 0.0.0.0 --port 8082 --proxy-headers --forwarded-allow-ips=* --root-path=/stac"
-    networks:
-      network:
-        ipv4_address: 172.20.0.3
- 
+    command: bash -c "scripts/wait-for-it.sh database:5432 && python -m stac_fastapi.pgstac.app"
+    develop:
+      watch:
+        - action: rebuild
+          path: ./stac_fastapi/pgstac
+
   database:
-    image: ghcr.io/stac-utils/pgstac:v0.9.2
-    restart: always
+    image: ghcr.io/stac-utils/pgstac:v0.9.8
     environment:
       - POSTGRES_USER=username
       - POSTGRES_PASSWORD=password
@@ -42,16 +42,10 @@ services:
       - PGUSER=username
       - PGPASSWORD=password
       - PGDATABASE=postgis
-    volumes:
-      - /data/stac-postgres:/var/lib/postgresql/data
+    ports:
+      - "5439:5432"
     command: postgres -N 500
-    networks:
-      network:
-        ipv4_address: 172.20.0.4
 
 networks:
-  network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
+  default:
+    name: stac-fastapi-network
