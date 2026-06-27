@@ -1,6 +1,7 @@
 services:
   app:
     image: stac-utils/stac-fastapi-pgstac
+    restart: always
     build: .
     environment:
       - APP_HOST=0.0.0.0
@@ -20,30 +21,20 @@ services:
       - DB_MAX_CONN_SIZE=1
       - USE_API_HYDRATE=${USE_API_HYDRATE:-false}
       - ENABLE_TRANSACTIONS_EXTENSIONS=TRUE
-    ports:
-      - "8082:8082"
+      - STAC_FASTAPI_TITLE=NDP STAC
+      - STAC_FASTAPI_DESCRIPTION=NDP STAC Catalog
     volumes:
       - .:/app
     depends_on:
       - database
-    command: bash -c "./scripts/wait-for-it.sh database:5432 && python -m stac_fastapi.pgstac.app"
-
-  tests:
-    image: stac-utils/stac-fastapi-pgstac-test
-    build:
-      context: .
-      dockerfile: Dockerfile.tests
-    volumes:
-      - .:/app
-    environment:
-      - ENVIRONMENT=local
-      - DB_MIN_CONN_SIZE=1
-      - DB_MAX_CONN_SIZE=1
-      - USE_API_HYDRATE=${USE_API_HYDRATE:-false}
-    command: bash -c "python -m pytest -s -vv"
-
+    command: bash -c "./scripts/wait-for-it.sh database:5432 && uvicorn stac_fastapi.pgstac.app:app --host 0.0.0.0 --port 8082 --proxy-headers --forwarded-allow-ips=* --root-path=/stac"
+    networks:
+      network:
+        ipv4_address: 172.20.0.3
+ 
   database:
     image: ghcr.io/stac-utils/pgstac:v0.9.2
+    restart: always
     environment:
       - POSTGRES_USER=username
       - POSTGRES_PASSWORD=password
@@ -51,44 +42,16 @@ services:
       - PGUSER=username
       - PGPASSWORD=password
       - PGDATABASE=postgis
-    ports:
-      - "5439:5432"
+    volumes:
+      - /data/stac-postgres:/var/lib/postgresql/data
     command: postgres -N 500
-
-  # Load joplin demo dataset into the PGStac Application
-  loadjoplin:
-    image: stac-utils/stac-fastapi-pgstac
-    environment:
-      - ENVIRONMENT=development
-    volumes:
-      - ./stac_fastapi:/app/stac_fastapi
-      - ./scripts:/app/scripts
-    command: >
-      /bin/sh -c "
-        ./scripts/wait-for-it.sh -t 60 app:8082 &&
-        python -m pip install pip -U &&
-        python -m pip install requests &&
-        python /app/scripts/ingest_joplin.py http://app:8082
-        "
-    depends_on:
-      - database
-      - app
-
-  nginx:
-    image: nginx
-    ports:
-      - ${STAC_FASTAPI_NGINX_PORT:-8080}:80
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-    depends_on:
-      - app-nginx
-    command: [ "nginx-debug", "-g", "daemon off;" ]
-
-  app-nginx:
-    extends:
-      service: app
-    command: bash -c "./scripts/wait-for-it.sh database:5432 && uvicorn stac_fastapi.pgstac.app:app --host 0.0.0.0 --port 8082 --proxy-headers --forwarded-allow-ips=* --root-path=/api/v1/pgstac"
+    networks:
+      network:
+        ipv4_address: 172.20.0.4
 
 networks:
-  default:
-    name: stac-fastapi-network
+  network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
