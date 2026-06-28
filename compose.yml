@@ -1,17 +1,18 @@
 services:
   app:
     image: stac-utils/stac-fastapi-pgstac
+    restart: always
     build: .
     environment:
       - APP_HOST=0.0.0.0
       - APP_PORT=8082
       - RELOAD=true
       - ENVIRONMENT=local
-      - PGUSER=username
-      - PGPASSWORD=password
-      - PGDATABASE=postgis
-      - PGHOST=database
-      - PGPORT=5432
+      - PGUSER=${PGUSER}
+      - PGPASSWORD=${PGPASSWORD}
+      - PGDATABASE=${PGDATABASE}
+      - PGHOST=${PGHOST}
+      - PGPORT=${PGPORT}
       - WEB_CONCURRENCY=10
       - VSI_CACHE=TRUE
       - GDAL_HTTP_MERGE_CONSECUTIVE_RANGES=YES
@@ -21,31 +22,42 @@ services:
       - USE_API_HYDRATE=${USE_API_HYDRATE:-false}
       - ENABLE_TRANSACTIONS_EXTENSIONS=${ENABLE_TRANSACTIONS_EXTENSIONS:-false}
       - ENABLE_CATALOGS_EXTENSION=${ENABLE_CATALOGS_EXTENSION:-false}
-    ports:
-      - "8082:8082"
+    #ports:
+      #- "8082:8082"
     volumes:
       - ./stac_fastapi:/app/stac_fastapi
     depends_on:
       - database
-    command: bash -c "scripts/wait-for-it.sh database:5432 && python -m stac_fastapi.pgstac.app"
+    command: ${APP_COMMAND}
     develop:
       watch:
         - action: rebuild
           path: ./stac_fastapi/pgstac
+    networks:
+      network:
+        ipv4_address: ${APP_IP}
 
   database:
     image: ghcr.io/stac-utils/pgstac:v0.9.8
+    restart: always
+    hostname: ${PGHOST}
     environment:
-      - POSTGRES_USER=username
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=postgis
-      - PGUSER=username
-      - PGPASSWORD=password
-      - PGDATABASE=postgis
-    ports:
-      - "5439:5432"
+      - POSTGRES_USER=${PGUSER}
+      - POSTGRES_PASSWORD=${PGPASSWORD}
+      - POSTGRES_DB=${PGDATABASE}
+      - PGUSER=${PGUSER}
+      - PGPASSWORD=${PGPASSWORD}
+      - PGDATABASE=${PGDATABASE}
+    volumes:
+      - ${DB_VOLUME}:/var/lib/postgresql/data
+    #ports:
+      #- "5439:5432"
     command: postgres -N 500
+    networks:
+      network:
+        ipv4_address: ${DB_IP}
 
 networks:
-  default:
-    name: stac-fastapi-network
+  network:
+    external: true
+    name: stac-fastapi-pgstac_network
