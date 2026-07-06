@@ -60,4 +60,4 @@ services:
 networks:
   network:
     external: true
-    name: stac-fastapi-pgstac_network
+    name: ${NETWORK}
